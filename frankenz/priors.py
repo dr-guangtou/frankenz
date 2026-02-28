@@ -6,16 +6,11 @@ P(z, t, m) priors used when simulating observations.
 
 """
 
-from __future__ import (print_function, division)
-import six
-from six.moves import range
-
 import sys
 import os
 import warnings
 import math
 import numpy as np
-import warnings
 from scipy.interpolate import RegularGridInterpolator as grid_interp
 
 __all__ = ["pmag", "_bpz_prior", "bpz_pt_m", "bpz_pz_tm"]
@@ -187,7 +182,7 @@ def bpz_pz_tm(z, t, m, mbounds=(20, 32), zbounds=(0, 15), bpz_pztm_func=None,
 
     Parameters
     ----------
-    t : float
+    z : float
         Redshift.
 
     t : int
@@ -199,7 +194,7 @@ def bpz_pz_tm(z, t, m, mbounds=(20, 32), zbounds=(0, 15), bpz_pztm_func=None,
     mbounds : tuple of shape (2,), optional
         Magnitude lower/upper bounds. Default is `(20, 32)`.
 
-    mbounds : tuple of shape (2,), optional
+    zbounds : tuple of shape (2,), optional
         Redshift lower/upper bounds. Default is `(0, 15)`.
 
     bpz_pztm_func : function, optional

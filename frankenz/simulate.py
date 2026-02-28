@@ -6,16 +6,11 @@ Simulate photometric observations.
 
 """
 
-from __future__ import (print_function, division)
-import six
-from six.moves import range
-
 import sys
 import os
 import warnings
 import math
 import numpy as np
-import warnings
 from . import priors
 from . import reddening
 
@@ -83,11 +78,11 @@ def mag_err(mag, maglim, sigdet=5., params=(4.56, 1., 1.)):
     teff = np.exp(a + b * (maglim - 21.))
 
     # Compute flux/limit.
-    F = 10**(-0.4 * (m - 22.5))
-    Flim = 10**(-0.4 * (mlim - 22.5))
+    F = 10**(-0.4 * (mag - 22.5))
+    Flim = 10**(-0.4 * (maglim - 22.5))
 
     # Compute noise.
-    Fnoise = (Flim / sigmadet)**2 * k * teff - Flim
+    Fnoise = (Flim / sigdet)**2 * k * teff - Flim
     magerr = 2.5 / np.log(10.) * np.sqrt((1. + Fnoise / F) / (F * k * teff))
 
     return magerr
@@ -260,7 +255,7 @@ def draw_redshift_given_type_mag(p_z_tm, types, mags, rstate=None,
         # Compute PDF.
         try:
             pdf_z = p_z_tm(z=zgrid, t=t, m=m, **pztm_kwargs)
-        except:
+        except Exception:
             pdf_z = np.array([p_z_tm(z=z, t=t, m=m, **pztm_kwargs)
                               for z in zgrid])
 
@@ -441,7 +436,7 @@ class MockSurvey(object):
         if rstate is None:
             self.rstate = np.random
 
-    def load_survey(self, filter_list, path='', Npoints=5e4):
+    def load_survey(self, filter_list, path='', Npoints=50000):
         """
         Load an input filter list and associated depths for a particular
         survey. Results are stored internally under `filters`.
@@ -468,7 +463,7 @@ class MockSurvey(object):
         try:
             filter_list = _FILTERS[filter_list]
             path = os.path.dirname(os.path.realpath(__file__)) + '/filters/'
-        except:
+        except Exception:
             pass
 
         # Load filter list.
@@ -535,7 +530,7 @@ class MockSurvey(object):
         try:
             template_list = _TEMPLATES[template_list]
             path = os.path.dirname(os.path.realpath(__file__)) + '/seds/'
-        except:
+        except Exception:
             pass
 
         # Load template list.
@@ -594,7 +589,7 @@ class MockSurvey(object):
 
         try:
             self.pm, self.ptm, self.pztm = _PRIORS[prior]
-        except:
+        except Exception:
             self.pm, self.ptm, self.pztm = prior
 
     def set_refmag(self, ref, mode='name'):
@@ -798,13 +793,13 @@ class MockSurvey(object):
             types = self.data['types']
             templates = self.data['templates']
             redshifts = self.data['redshifts']
-        except:
+        except Exception:
             raise ValueError("No mock data has been generated.")
 
         # Extract reddening function.
         try:
             red_fn = _IGM[red_fn]
-        except:
+        except Exception:
             pass
 
         # Initialize useful quantities.
@@ -979,7 +974,7 @@ class MockSurvey(object):
         # Extract reddening function.
         try:
             red_fn = _IGM[red_fn]
-        except:
+        except Exception:
             pass
 
         # Initialize useful quantities.

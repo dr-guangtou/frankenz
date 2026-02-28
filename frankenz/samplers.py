@@ -6,16 +6,11 @@ Various samplers used for population/hierarchical redshift inference.
 
 """
 
-from __future__ import (print_function, division)
-import six
-from six.moves import range
-
 import sys
 import os
 import warnings
 import math
 import numpy as np
-import warnings
 from scipy import stats
 
 __all__ = ["loglike_nz", "population_sampler", "hierarchical_sampler"]
@@ -173,7 +168,7 @@ class population_sampler(object):
             try:
                 # Try to start from out last position.
                 pos = self.samples[-1]
-            except:
+            except Exception:
                 # Otherwise, just stack the individual PDFs.
                 pos = self.pdfs.sum(axis=0) / self.pdfs.sum()
                 pass
@@ -184,7 +179,7 @@ class population_sampler(object):
         # Sample.
         for i, (x, lnp) in enumerate(self.sample(Niter,
                                                  logprior_nz=logprior_nz,
-                                                 pos_init=pos_init, thin=thin,
+                                                 pos_init=pos, thin=thin,
                                                  mh_steps=mh_steps,
                                                  rstate=rstate,
                                                  prior_args=prior_args,
@@ -336,9 +331,8 @@ class hierarchical_sampler(object):
     def reset(self):
         """Re-initialize the sampler."""
 
-        self.samples_prior = []
+        self.samples = []
         self.samples_lnp = []
-        self.samples_counts = []
 
     @property
     def results(self):
@@ -405,7 +399,7 @@ class hierarchical_sampler(object):
             try:
                 # Try to start from out last position.
                 pos = self.samples[-1]
-            except:
+            except Exception:
                 # Otherwise, just stack the individual PDFs.
                 pos = self.pdfs.sum(axis=0) / self.pdfs.sum()
                 pass

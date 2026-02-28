@@ -7,23 +7,17 @@ approach based on adaptive networks.
 
 """
 
-from __future__ import (print_function, division)
-import six
-from six.moves import range
-from six import iteritems
-
 import sys
 import os
 import warnings
 import math
 import numpy as np
-import warnings
 from scipy.spatial import KDTree
 from pandas import unique
 import networkx as nx
 import heapq
 
-from .pdf import *
+from .pdf import (logprob, magnitude, luptitude, gauss_kde, gauss_kde_dict)
 
 try:
     from scipy.special import logsumexp
@@ -2147,7 +2141,7 @@ class GrowingNeuralGas(_Network):
         for count, i in enumerate(node_idxs):
             self.graph.add_node(i, count=count)  # add counter labels
         npos = nx.get_node_attributes(self.graph, 'pos')
-        self.nodes = np.array([p[1] for p in iteritems(npos)])
+        self.nodes = np.array([p[1] for p in npos.items()])
         y = self.nodes
         ye = np.zeros_like(y)
         ym = np.ones_like(y, dtype='bool')
@@ -2186,7 +2180,7 @@ class GrowingNeuralGas(_Network):
             # Update the connection between BMU and BMU2.
             try:
                 self.graph.edges[bmu, bmu2]['age'] = 0  # rejuvenate edge
-            except:
+            except Exception:
                 self.graph.add_edge(bmu, bmu2, age=0)  # add edge
                 pass
 
@@ -2214,7 +2208,7 @@ class GrowingNeuralGas(_Network):
                             self.graph.remove_node(e1)
                         if not list(self.graph.neighbors(e2)):
                             self.graph.remove_node(e2)
-                    except:
+                    except Exception:
                         pass
                 prune_edges = []
 
@@ -2222,7 +2216,7 @@ class GrowingNeuralGas(_Network):
                 if self.graph.number_of_nodes() < max_nodes:
                     # Find the node with the largest cumulative error.
                     errors = nx.get_node_attributes(self.graph, 'error')
-                    errors = np.array([er for er in iteritems(errors)])
+                    errors = np.array([er for er in errors.items()])
                     e1_idx = int(errors[np.argmax(errors[:, 1]), 0])
                     # Find the neighbor with the largest cumulative error.
                     e1_nbrs = list(self.graph.neighbors(e1_idx))
@@ -2248,7 +2242,7 @@ class GrowingNeuralGas(_Network):
                 [self.graph.add_node(i, count=count)
                  for count, i in enumerate(node_idxs)]  # add counter labels
                 npos = nx.get_node_attributes(self.graph, 'pos')
-                self.nodes = np.array([p[1] for p in iteritems(npos)])
+                self.nodes = np.array([p[1] for p in npos.items()])
                 y = self.nodes
                 ye = np.zeros_like(y)
                 ym = np.ones_like(y, dtype='bool')
