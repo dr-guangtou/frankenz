@@ -6,16 +6,11 @@ Reddening functions used when simulating observations.
 
 """
 
-from __future__ import (print_function, division)
-import six
-from six.moves import range
-
 import sys
 import os
 import warnings
 import math
 import numpy as np
-import warnings
 
 __all__ = ["_madau_t1", "_madau_tau1", "_madau_tau2", "madau_teff"]
 

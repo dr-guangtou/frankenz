@@ -6,16 +6,11 @@ Plotting utilities.
 
 """
 
-from __future__ import (print_function, division)
-import six
-from six.moves import range
-
 import sys
 import os
 import warnings
 import math
 import numpy as np
-import warnings
 from matplotlib import pyplot as plt
 from scipy.ndimage.filters import gaussian_filter
 
@@ -662,7 +657,7 @@ def plot2d_network(network, counts='weighted', label_name=None,
             else:
                 try:
                     val = point_est(ys, wts)
-                except:
+                except Exception:
                     raise RuntimeError("`point_est` function failed!")
             vals[i] = val
         if verbose:

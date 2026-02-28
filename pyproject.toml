@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "frankenz"
+version = "0.3.5"
+description = "A supervised Bayesian photometric redshift library"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [
+    { name = "Joshua S Speagle", email = "jspeagle@cfa.harvard.edu" },
+]
+keywords = [
+    "photo-z",
+    "photometric redshift",
+    "bayesian",
+    "supervised learning",
+    "nearest neighbors",
+    "self-organizing map",
+    "growing neural gas",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Intended Audience :: Science/Research",
+]
+dependencies = [
+    "numpy",
+    "scipy",
+    "matplotlib",
+    "pandas",
+    "networkx",
+]
+
+[project.urls]
+Repository = "https://github.com/joshspeagle/frankenz"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "mutation: tests verifying mutation bugs are fixed",
+    "regression: regression tests for known issues",
+]

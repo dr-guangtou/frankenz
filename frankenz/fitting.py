@@ -6,16 +6,11 @@ Objects used to store data, compute fits, and generate PDFs.
 
 """
 
-from __future__ import (print_function, division)
-import six
-from six.moves import range
-
 import sys
 import os
 import warnings
 import math
 import numpy as np
-import warnings
 
 try:
     from scipy.special import logsumexp

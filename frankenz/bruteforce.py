@@ -6,18 +6,13 @@ Object used to fit data and compute PDFs using brute-force methods.
 
 """
 
-from __future__ import (print_function, division)
-import six
-from six.moves import range
-
 import sys
 import os
 import warnings
 import math
 import numpy as np
-import warnings
 
-from .pdf import *
+from .pdf import (logprob, gauss_kde, gauss_kde_dict)
 
 try:
     from scipy.special import logsumexp
@@ -180,6 +175,14 @@ class BruteForce():
         self.NDATA = Ndata
 
         if save_fits:
+            # 7 arrays of shape (Ndata, Nmodels) at 8 bytes each.
+            mem_gb = 7 * Ndata * Nmodels * 8 / 1e9
+            if mem_gb > 1.:
+                warnings.warn(
+                    "BruteForce save_fits=True will allocate {:.1f} GB "
+                    "for {:d} objects x {:d} models. Consider "
+                    "save_fits=False or NearestNeighbors for large "
+                    "datasets.".format(mem_gb, Ndata, Nmodels))
             self.fit_lnprior = np.zeros((Ndata, Nmodels), dtype='float')
             self.fit_lnlike = np.zeros((Ndata, Nmodels), dtype='float')
             self.fit_lnprob = np.zeros((Ndata, Nmodels), dtype='float')
@@ -587,6 +590,14 @@ class BruteForce():
         Ndata = len(data)
         Nmodels = self.NMODEL
         if save_fits:
+            # 7 arrays of shape (Ndata, Nmodels) at 8 bytes each.
+            mem_gb = 7 * Ndata * Nmodels * 8 / 1e9
+            if mem_gb > 1.:
+                warnings.warn(
+                    "BruteForce save_fits=True will allocate {:.1f} GB "
+                    "for {:d} objects x {:d} models. Consider "
+                    "save_fits=False or NearestNeighbors for large "
+                    "datasets.".format(mem_gb, Ndata, Nmodels))
             self.fit_lnprior = np.zeros((Ndata, Nmodels), dtype='float')
             self.fit_lnlike = np.zeros((Ndata, Nmodels), dtype='float')
             self.fit_lnprob = np.zeros((Ndata, Nmodels), dtype='float')

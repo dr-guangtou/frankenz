@@ -6,16 +6,11 @@ Functions for manipulating PDFs.
 
 """
 
-from __future__ import (print_function, division)
-import six
-from six.moves import range
-
 import sys
 import os
 import warnings
 import math
 import numpy as np
-import warnings
 from scipy.special import erf, xlogy, gammaln
 
 __all__ = ["_loglike", "_loglike_s", "loglike", "logprob",
@@ -196,7 +191,10 @@ def _loglike_s(data, data_err, data_mask, models, models_err, models_mask,
     # Iterate until convergence if we don't ignore model errors.
     if ignore_model_err is not True:
         lerr = np.inf  # initialize ln(like) error
-        while lerr > ltol:
+        max_iter = 100
+        n_iter = 0
+        while lerr > ltol and n_iter < max_iter:
+            n_iter += 1
             # Compute new variance using our previous scale.
             tot_var = np.square(data_err) + np.square(scale[:, None] *
                                                       models_err)
@@ -306,7 +304,10 @@ def loglike(data, data_err, data_mask, models, models_err, models_mask,
 
     """
 
-    # Clean data (safety checks).
+    # Clean data (safety checks) — work on copies to avoid mutating inputs.
+    data = np.array(data, dtype='float64')
+    data_err = np.array(data_err, dtype='float64')
+    data_mask = np.array(data_mask)
     clean = np.isfinite(data) & np.isfinite(data_err) & (data_err > 0.)
     data[~clean], data_err[~clean], data_mask[~clean] = 0., 1., False
 
@@ -617,7 +618,8 @@ def gauss_kde_dict(pdfdict, y=None, y_std=None, y_idx=None, y_std_idx=None,
             norm = kcdf[hpad-1] - kcdf[lpad-1]
 
         # Stack weighted Gaussian kernel over array slice.
-        pdf[low:high] += (y_wt[i] / norm) * kernel[lpad:2*width+1+hpad]
+        if norm > 0.:
+            pdf[low:high] += (y_wt[i] / norm) * kernel[lpad:2*width+1+hpad]
 
     return pdf
 
@@ -647,6 +649,14 @@ def magnitude(phot, err, zeropoints=1., *args, **kwargs):
         Magnitudes errors corresponding to input `err`.
 
     """
+
+    # Warn about non-positive fluxes (produce NaN via log10).
+    bad = np.asarray(phot) <= 0
+    if np.any(bad):
+        n_bad = int(np.sum(bad))
+        warnings.warn("{} non-positive flux value(s) encountered in "
+                      "magnitude(); consider using luptitude() "
+                      "instead.".format(n_bad))
 
     # Compute magnitudes.
     mag = -2.5 * np.log10(phot / zeropoints)
@@ -981,7 +991,7 @@ def pdfs_summarize(pdfs, pgrid, renormalize=True, rstate=None,
 
     Nobj, Ngrid = len(pdfs), len(pgrid)
     if renormalize:
-        pdfs /= pdfs.sum(axis=1)[:, None]  # sum to 1
+        pdfs = pdfs / pdfs.sum(axis=1)[:, None]  # sum to 1 (non-mutating)
 
     # Compute mean.
     pmean = np.dot(pdfs, pgrid)
@@ -1019,7 +1029,7 @@ def pdfs_summarize(pdfs, pgrid, renormalize=True, rstate=None,
     else:
         try:
             kernel = pkern(pkern_grid)
-        except:
+        except Exception:
             raise RuntimeError("The input kernel does not appear to be valid.")
     prisk = np.dot(pdfs, 1.0 - kernel)  # "risk" estimator
     pbest = pgrid[np.argmin(prisk, axis=1)]  # "best" estimator

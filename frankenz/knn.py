@@ -7,20 +7,15 @@ approach based on Monte Carlo methods.
 
 """
 
-from __future__ import (print_function, division)
-import six
-from six.moves import range
-
 import sys
 import os
 import warnings
 import math
 import numpy as np
-import warnings
 from scipy.spatial import KDTree
 from pandas import unique
 
-from .pdf import *
+from .pdf import (logprob, magnitude, luptitude, gauss_kde, gauss_kde_dict)
 
 try:
     from scipy.special import logsumexp
@@ -131,10 +126,10 @@ class NearestNeighbors():
         else:
             try:
                 # Check if `feature_map` is a valid function.
-                _ = feature_map(np.atleast_2d(X_train[0]),
-                                np.atleast_2d(Xe_train[0]),
+                _ = feature_map(np.atleast_2d(self.models[0]),
+                                np.atleast_2d(self.models_err[0]),
                                 *fmap_args, **fmap_kwargs)
-            except:
+            except Exception:
                 # If all else fails, raise an exception.
                 raise ValueError("The provided feature map is not valid.")
         self.feature_map = feature_map
@@ -340,6 +335,14 @@ class NearestNeighbors():
         self.NDATA = Ndata
 
         if save_fits:
+            # 9 arrays of shape (Ndata, Nmodels) at 8 bytes each.
+            mem_gb = 9 * Ndata * Nmodels * 8 / 1e9
+            if mem_gb > 1.:
+                warnings.warn(
+                    "NearestNeighbors save_fits=True will allocate "
+                    "{:.1f} GB for {:d} objects x {:d} neighbor slots. "
+                    "Consider save_fits=False for large "
+                    "datasets.".format(mem_gb, Ndata, Nmodels))
             inf = np.inf
             self.Nneighbors = np.zeros(Ndata, dtype='int')
             self.neighbors = np.zeros((Ndata, Nmodels), dtype='int') - 99
@@ -355,7 +358,7 @@ class NearestNeighbors():
         for i, (x, xe, xm) in enumerate(zip(data, data_err, data_mask)):
 
             # Nearest-neighbor search.
-            x_t = rstate.normal(x, xe)  # monte carlo data
+            x_t = rstate.normal(x, xe)  # single monte carlo draw of the data
             y_t, ye_t = self.feature_map(x_t, xe, *self.fmap_args,
                                          **self.fmap_kwargs)  # map to features
             y_t = np.atleast_2d(y_t)
@@ -810,6 +813,14 @@ class NearestNeighbors():
         Ndata = len(data)
         Nmodels = self.K * self.k
         if save_fits:
+            # 9 arrays of shape (Ndata, Nmodels) at 8 bytes each.
+            mem_gb = 9 * Ndata * Nmodels * 8 / 1e9
+            if mem_gb > 1.:
+                warnings.warn(
+                    "NearestNeighbors save_fits=True will allocate "
+                    "{:.1f} GB for {:d} objects x {:d} neighbor slots. "
+                    "Consider save_fits=False for large "
+                    "datasets.".format(mem_gb, Ndata, Nmodels))
             self.Nneighbors = np.zeros(Ndata, dtype='int')
             self.neighbors = np.zeros((Ndata, Nmodels), dtype='int') - 99
             self.fit_lnprior = np.zeros((Ndata, Nmodels), dtype='float')-np.inf
@@ -827,7 +838,7 @@ class NearestNeighbors():
         for i, (x, xe, xm) in enumerate(zip(data, data_err, data_mask)):
 
             # Nearest-neighbor search.
-            x_t = rstate.normal(x, xe)  # monte carlo data
+            x_t = rstate.normal(x, xe)  # single monte carlo draw of the data
             y_t, ye_t = self.feature_map(x_t, xe, *self.fmap_args,
                                          **self.fmap_kwargs)  # map to features
             y_t = np.atleast_2d(y_t)
