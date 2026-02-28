@@ -85,9 +85,74 @@
 
 ---
 
-## Phase 02: Production-Ready API (Planned)
+## Phase 02: Production-Ready API
 
-_Incorporate frankenz4DESI patterns: config system, HDF5 I/O, batch processing, data-driven priors._
+**Branch**: `phase-02/production-api`
+**Plan**: `docs/plan/phase_02.md`
+
+### Step 0: Planning Documents
+
+| ID | Task | Status | Notes |
+|----|------|--------|-------|
+| P02_000a | Create `docs/plan/phase_02.md` | done | |
+| P02_000b | Update `docs/TODO.md` with Phase 02 task table | done | |
+
+### Step 1: Config System
+
+| ID | Task | Status | Notes |
+|----|------|--------|-------|
+| P02_001 | Create `frankenz/config.py` with dataclass hierarchy | done | 8 dataclasses, ~150 LOC |
+| P02_002 | Implement YAML load/save + `from_dict()`/`to_dict()` | done | Recursive from_dict, override() |
+| P02_003 | Write `tests/test_config.py` | done | 19 tests |
+
+### Step 2: Extract Transforms
+
+| ID | Task | Status | Notes |
+|----|------|--------|-------|
+| P02_004 | Extract transforms from `pdf.py` into `frankenz/transforms.py` | done | 4 functions moved |
+| P02_005 | Add `identity()` and `get_transform(config)` factory | done | functools.partial binding |
+| P02_006 | Update imports in `knn.py` and `networks.py` | done | Re-exports in pdf.py |
+| P02_007 | Write `tests/test_transforms.py` | done | 12 tests |
+
+### Step 3: I/O Module
+
+| ID | Task | Status | Notes |
+|----|------|--------|-------|
+| P02_008 | Define `PhotoData` dataclass container | done | validate(), subset() |
+| P02_009 | Implement CSV reader/writer | done | column_map based |
+| P02_010 | Implement FITS reader/writer (optional dep: astropy) | done | astropy.table |
+| P02_011 | Implement HDF5 reader/writer (optional dep: h5py) | done | Grouped datasets |
+| P02_012 | Implement NumPy reader/writer | done | .npz format |
+| P02_013 | Add `load_data()` / `save_data()` format dispatcher | done | Auto-detect from extension |
+| P02_014 | Write `tests/test_io.py` | done | 19 tests |
+
+### Step 4: Factory Functions
+
+| ID | Task | Status | Notes |
+|----|------|--------|-------|
+| P02_015 | Add `get_prior(config)` factory to `priors.py` | done | uniform, bpz |
+| P02_016 | Add `get_fitter(config, training_data)` factory to `fitting.py` | done | knn, bruteforce |
+| P02_017 | Write `tests/test_factories.py` | done | 13 tests |
+
+### Step 5: Batch Processing
+
+| ID | Task | Status | Notes |
+|----|------|--------|-------|
+| P02_018 | Create `frankenz/batch.py` with `run_pipeline()` | done | Chunked processing |
+| P02_019 | Add optional tqdm progress tracking | done | Fallback to plain range |
+| P02_020 | Write `tests/test_batch.py` | done | 5 tests |
+
+### Step 6: Integration
+
+| ID | Task | Status | Notes |
+|----|------|--------|-------|
+| P02_022 | Update `__init__.py` exports + bump to v0.4.0 | done | 4 new module imports |
+| P02_023 | Update `pyproject.toml` (pyyaml required, optional deps) | done | fits/hdf5/progress/all extras |
+| P02_024 | Write `tests/test_pipeline.py` (end-to-end) | done | 4 tests (KNN + BruteForce) |
+| P02_025 | Update docs (TODO, CLAUDE.md architecture) | done | |
+| P02_026 | Verify all 70+ existing tests still pass | done | 142 tests, 2.5s |
+
+---
 
 ## Phase 03: HSC Pipeline (Planned)
 

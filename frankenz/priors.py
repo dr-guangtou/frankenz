@@ -13,7 +13,7 @@ import math
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator as grid_interp
 
-__all__ = ["pmag", "_bpz_prior", "bpz_pt_m", "bpz_pz_tm"]
+__all__ = ["pmag", "_bpz_prior", "bpz_pt_m", "bpz_pz_tm", "get_prior"]
 
 bpz_ptm = None
 bpz_pztm = None
@@ -228,3 +228,56 @@ def bpz_pz_tm(z, t, m, mbounds=(20, 32), zbounds=(0, 15), bpz_pztm_func=None,
 
     return bpz_pztm_func((np.clip(m, mbounds[0], mbounds[1]),
                           np.clip(z, zbounds[0], zbounds[1]), t))
+
+
+def get_prior(config):
+    """Factory that returns a prior callable from config.
+
+    Parameters
+    ----------
+    config : PriorConfig or FrankenzConfig
+        Prior configuration. If FrankenzConfig, uses its `.prior` attribute.
+
+    Returns
+    -------
+    lprob_func : callable or None
+        A function compatible with the `lprob_func` parameter of fitters.
+        Returns None for uniform prior (fitters use flat prior by default).
+    """
+    from .config import FrankenzConfig, PriorConfig
+    if isinstance(config, FrankenzConfig):
+        config = config.prior
+
+    prior_type = config.type.lower()
+
+    if prior_type == "uniform":
+        return None
+    elif prior_type == "bpz":
+        return _bpz_lprob_func
+    else:
+        raise ValueError(
+            f"Unknown prior type: {config.type!r}. "
+            f"Valid types: 'uniform', 'bpz'."
+        )
+
+
+def _bpz_lprob_func(models_z, models_zerr, label_grid, *args, **kwargs):
+    """BPZ prior wrapped as lprob_func for use with fitters.
+
+    Returns log-prior array of shape (Nmodel, Ngrid) by combining
+    P(z|t,m) over types with uniform type mixing.
+    """
+    Nmodel = len(models_z)
+    Ngrid = len(label_grid)
+    lnprior = np.zeros((Nmodel, Ngrid))
+
+    for i in range(Nmodel):
+        # Sum P(z|t,m) over 3 BPZ types with equal weight,
+        # using magnitude 25 as a default reference magnitude.
+        pz = np.zeros(Ngrid)
+        for t in range(3):
+            pz += np.array([bpz_pz_tm(z, t, 25.0) for z in label_grid])
+        pz = np.clip(pz, 1e-300, None)
+        lnprior[i] = np.log(pz)
+
+    return lnprior

@@ -17,7 +17,8 @@ from pandas import unique
 import networkx as nx
 import heapq
 
-from .pdf import (logprob, magnitude, luptitude, gauss_kde, gauss_kde_dict)
+from .pdf import (logprob, gauss_kde, gauss_kde_dict)
+from .transforms import magnitude, luptitude
 
 try:
     from scipy.special import logsumexp
