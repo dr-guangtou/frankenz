@@ -1,7 +1,7 @@
 ---
 title: "Frankenz Code Review"
 date: 2026-02-28
-version: 0.3.5
+version: 0.4.0
 reviewer: Song Huang (with Claude Code)
 tags:
   - frankenz
@@ -422,8 +422,8 @@ Retired `setup.py` entirely. All package metadata consolidated into `pyproject.t
 2. ~~**Add convergence guard to `_loglike_s`** (ISSUE-06)~~ Done (Phase 01)
 3. ~~**Add basic unit tests**~~ Done (Phase 01 — 70 tests across 11 files)
 4. ~~**Drop Python 2 support** and remove `six`~~ Done (Phase 01)
-5. **Add batch processing** to avoid OOM for large datasets
-6. **Add FITS/HDF5 I/O** for astronomical catalog integration
+5. ~~**Add batch processing** to avoid OOM for large datasets~~ Done (Phase 02 — `batch.py` with `run_pipeline()`, chunked processing)
+6. ~~**Add FITS/HDF5 I/O** for astronomical catalog integration~~ Done (Phase 02 — `io.py` with CSV/FITS/HDF5/NumPy, `PhotoData` container)
 7. **Add parallelization** (multiprocessing or joblib) for the per-object loop
 8. ~~**Fix ISSUE-10** (single MC realization for data)~~ Documented (P01_019) — design trade-off, kept as-is
 9. ~~**Fix ISSUE-11** (gauss_kde_dict zero-norm edge case)~~ Done (P01_015)

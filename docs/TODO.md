@@ -152,6 +152,20 @@
 | P02_025 | Update docs (TODO, CLAUDE.md architecture) | done | |
 | P02_026 | Verify all 70+ existing tests still pass | done | 142 tests, 2.5s |
 
+### Step 7: Documentation & Demos
+
+| ID | Task | Status | Notes |
+|----|------|--------|-------|
+| P02_027 | Write comprehensive user manual (`docs/frankenz_manual.md`) | done | 9 sections, ~650 lines |
+| P02_028 | Update demo notebook 1 — PhotoData + save_data demo | done | pickle.dump, PhotoData section |
+| P02_029 | Update demo notebook 2 — config-driven pipeline section | done | FrankenzConfig + run_pipeline + comparison plot |
+| P02_030 | Update demo notebook 3 — transform import migration | done | fz.transforms.luptitude |
+| P02_031 | Update demo notebook 4 — get_fitter() factory reference | done | Inline code example |
+| P02_032 | Update demo notebook 5 — Python 2 compat removal | done | Minimal changes |
+| P02_033 | Update demo notebook 6 — Python 2 compat removal | done | Minimal changes |
+| P02_034 | Record Phase 02 lessons in LESSONS.md | done | |
+| P02_035 | Update frankenz_review.md status | done | v0.4.0, items 5+6 done |
+
 ---
 
 ## Phase 03: HSC Pipeline (Planned)
