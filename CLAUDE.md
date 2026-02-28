@@ -25,27 +25,37 @@ Training data (flux, flux_err, spec-z)
 
 | Module | Role |
 |--------|------|
+| `config.py` | Dataclass config hierarchy + YAML serde |
+| `transforms.py` | Feature transforms (identity/magnitude/luptitude) + factory |
+| `io.py` | PhotoData container + CSV/FITS/HDF5/NumPy readers/writers |
+| `batch.py` | Pipeline runner with chunked processing |
 | `pdf.py` | Likelihood math, KDE, PDF utilities |
 | `knn.py` | KMCkNN fitting (production backend) |
 | `bruteforce.py` | Exhaustive fitting (small grids / reference) |
 | `networks.py` | SOM + GNG neural network compression |
-| `fitting.py` | Base class, unified interface |
+| `fitting.py` | Fitter re-exports + `get_fitter()` factory |
 | `samplers.py` | Population N(z) + hierarchical MCMC |
 | `simulate.py` | Mock survey + synthetic photometry |
-| `priors.py` | BPZ-style Bayesian priors |
+| `priors.py` | BPZ-style Bayesian priors + `get_prior()` factory |
 | `reddening.py` | Madau IGM attenuation |
 | `plotting.py` | Visualization utilities |
 
 All fitters share: `fit()` -> `predict()` -> `fit_predict()` with internal generators for streaming.
 
-## Critical Bugs (Tracked in docs/frankenz_review.md)
+### Factory Functions
+- `get_transform(config)` — returns configured transform callable
+- `get_prior(config)` — returns prior callable (or None for uniform)
+- `get_fitter(config, training_data)` — returns configured BruteForce or NearestNeighbors
+- `run_pipeline(config, train, test)` — full chunked pipeline with PDFs
 
-5 critical/high bugs must be fixed before production use:
-1. `simulate.py:86-90` — `mag_err()` undefined variable names
-2. `pdf.py:309-311` — `loglike()` mutates input arrays in place
-3. `knn.py:134-136` — custom `feature_map` validation uses undefined `X_train`
-4. `samplers.py:336-341` — `hierarchical_sampler.reset()` clears wrong attributes
-5. `pdf.py:984` — `pdfs_summarize()` mutates input via `/=`
+## Critical Bugs (All fixed in Phase 01)
+
+All 5 critical/high bugs have been fixed:
+1. `simulate.py` — `mag_err()` undefined variable names (fixed)
+2. `pdf.py` — `loglike()` mutates input arrays in place (fixed)
+3. `knn.py` — custom `feature_map` validation uses undefined `X_train` (fixed)
+4. `samplers.py` — `hierarchical_sampler.reset()` clears wrong attributes (fixed)
+5. `pdf.py` — `pdfs_summarize()` mutates input via `/=` (fixed)
 
 ## Development Rules
 
@@ -69,12 +79,11 @@ All fitters share: `fit()` -> `predict()` -> `fit_predict()` with internal gener
 
 ## Reference: frankenz4DESI Patterns
 
-The `../frankenz4DESI/` wrapper by Zechang Sun shows production patterns:
-- YAML config system (YACS) for all parameters
-- HDF5 I/O for training data and results
-- Factory functions: `get_transform()`, `get_prior()`
-- Batch processing with progress tracking
+The `../frankenz4DESI/` wrapper by Zechang Sun shows production patterns that
+have been incorporated into frankenz v0.4.0:
+- YAML config system (dataclasses + pyyaml, replacing YACS)
+- Multi-format I/O (CSV/FITS/HDF5/NumPy via PhotoData container)
+- Factory functions: `get_transform()`, `get_prior()`, `get_fitter()`
+- Batch processing with chunking and optional tqdm progress
 - HSC 5-band (grizy) photometry pipeline
-- KNN-based data-driven prior as alternative to flat prior
-
-These patterns should be incorporated into the updated frankenz.
+- KNN-based data-driven prior (deferred to future phase)

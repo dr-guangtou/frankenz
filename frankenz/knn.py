@@ -15,7 +15,8 @@ import numpy as np
 from scipy.spatial import KDTree
 from pandas import unique
 
-from .pdf import (logprob, magnitude, luptitude, gauss_kde, gauss_kde_dict)
+from .pdf import (logprob, gauss_kde, gauss_kde_dict)
+from .transforms import magnitude, luptitude, identity
 
 try:
     from scipy.special import logsumexp
@@ -114,9 +115,7 @@ class NearestNeighbors():
         self.fmap_kwargs = fmap_kwargs
 
         if feature_map == 'identity':
-            # Identity function.
-            def feature_map(x, xe, *args, **kwargs):
-                return x, xe
+            feature_map = identity
         elif feature_map == 'magnitude':
             # Magnitude function.
             feature_map = magnitude
