@@ -13,7 +13,10 @@ import math
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator as grid_interp
 
-_trapezoid = getattr(np, 'trapezoid', np.trapz)
+try:
+    _trapezoid = np.trapezoid
+except AttributeError:
+    _trapezoid = np.trapz
 
 __all__ = ["pmag", "_bpz_prior", "bpz_pt_m", "bpz_pz_tm", "get_prior"]
 

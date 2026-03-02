@@ -14,7 +14,10 @@ import numpy as np
 from . import priors
 from . import reddening
 
-_trapezoid = getattr(np, 'trapezoid', np.trapz)
+try:
+    _trapezoid = np.trapezoid
+except AttributeError:
+    _trapezoid = np.trapz
 
 __all__ = ["mag_err", "draw_mag", "draw_type_given_mag",
            "draw_redshift_given_type_mag", "draw_ztm", "MockSurvey"]

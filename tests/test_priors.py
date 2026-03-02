@@ -3,7 +3,10 @@
 import numpy as np
 import pytest
 
-_trapezoid = getattr(np, 'trapezoid', np.trapz)
+try:
+    _trapezoid = np.trapezoid
+except AttributeError:
+    _trapezoid = np.trapz
 
 from frankenz.priors import pmag, bpz_pt_m, bpz_pz_tm, _bpz_prior
 

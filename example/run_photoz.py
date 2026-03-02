@@ -43,10 +43,12 @@ from frankenz.pdf import pdfs_summarize
 HDF5_MAGIC = b"\x89HDF\r\n\x1a\n"
 BAND_NAMES = ["g", "r", "i", "z", "y"]
 
-# Minimum KDE bandwidth for spectroscopic redshift errors.
-# Values <= 0 or very large are sentinel values in the HSC catalog.
-ZERR_FLOOR = 0.01
-ZERR_CEIL = 1.0
+# Fixed KDE bandwidth for spectroscopic redshift errors.
+# The old frankenz4DESI pipeline uses ENABLE_ZERR=False with ZSMOOTH=0.01,
+# ignoring actual zerr values and using a fixed bandwidth.  We replicate
+# that here because the HSC HDF5 zerr column contains ~31% sentinel values
+# (-9, 0, 99) that would produce over-smoothed PDFs if used as bandwidth.
+ZSMOOTH = 0.01
 
 
 def load_hdf5_with_header(path):
@@ -105,16 +107,16 @@ def load_hsc_data(path):
 
     # Load metadata
     redshifts = np.array(f["z"])[good] if "z" in f else None
-    redshift_errs = np.array(f["zerr"])[good] if "zerr" in f else None
     object_ids = np.array(f["object_id"])[good] if "object_id" in f else None
 
-    # Clamp zerr: sentinel values (-9, 99, 0) cause zero-width KDE kernels
-    if redshift_errs is not None:
-        n_bad = np.sum((redshift_errs <= 0) | (redshift_errs > ZERR_CEIL))
-        redshift_errs = np.clip(redshift_errs, ZERR_FLOOR, ZERR_CEIL)
-        if n_bad > 0:
-            print(f"  Clamped {n_bad} sentinel zerr values to "
-                  f"[{ZERR_FLOOR}, {ZERR_CEIL}]")
+    # Use fixed KDE bandwidth (ZSMOOTH) instead of raw zerr values.
+    # The HSC zerr column has ~31% sentinel values (-9, 0, 99) that would
+    # produce over-smoothed PDFs.  The old frankenz4DESI pipeline ignores
+    # zerr entirely (ENABLE_ZERR=false) and uses ZSMOOTH=0.01 as a fixed
+    # Gaussian KDE bandwidth for all training objects.
+    n_good = int(good.sum())
+    redshift_errs = np.full(n_good, ZSMOOTH)
+    print(f"  Using fixed KDE bandwidth (ZSMOOTH={ZSMOOTH})")
 
     f.close()
 
@@ -123,7 +125,7 @@ def load_hsc_data(path):
         flux_err=err.astype(np.float64),
         mask=np.ones_like(corrected_flux, dtype=int),
         redshifts=redshifts.astype(np.float64) if redshifts is not None else None,
-        redshift_errs=redshift_errs.astype(np.float64) if redshift_errs is not None else None,
+        redshift_errs=redshift_errs,
         object_ids=object_ids,
         band_names=BAND_NAMES,
     )
