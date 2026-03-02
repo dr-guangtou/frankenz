@@ -14,6 +14,8 @@ import numpy as np
 from . import priors
 from . import reddening
 
+_trapezoid = getattr(np, 'trapezoid', np.trapz)
+
 __all__ = ["mag_err", "draw_mag", "draw_type_given_mag",
            "draw_redshift_given_type_mag", "draw_ztm", "MockSurvey"]
 
@@ -499,8 +501,8 @@ class MockSurvey(object):
             lwave = np.log(wave)  # ln(wavelength)
             trans = np.interp(1e10 * wave, fltr['wavelength'],
                               fltr['transmission'])  # interp transmission
-            lambda_eff = np.exp(np.trapz(trans * lwave, lnu) /
-                                np.trapz(trans, lnu)) * 1e10  # integrate
+            lambda_eff = np.exp(_trapezoid(trans * lwave, lnu) /
+                                _trapezoid(trans, lnu)) * 1e10  # integrate
             fltr['lambda_eff'] = lambda_eff
 
     def load_templates(self, template_list, path='', wnorm=7000.):
@@ -807,7 +809,7 @@ class MockSurvey(object):
         flw = [np.log(f['wavelength']) for f in self.filters]  # ln(flt wave)
         filt_nu = [f['frequency'] for f in self.filters]  # filt nu
         filt_t = [f['transmission'] for f in self.filters]  # filt nu
-        norm = [np.trapz(ft / fn, fn)
+        norm = [_trapezoid(ft / fn, fn)
                 for ft, fn in zip(filt_t, filt_nu)]  # filter normalization
         tfnu = [t['fnu'] for t in self.templates]
 
@@ -823,7 +825,7 @@ class MockSurvey(object):
 
             # Integrate the flux over the filter. Interpolation is performed
             # using the arcsinh transform for improved numerical stability.
-            phot[i] = [np.trapz(np.sinh(np.interp(f_lw, tlw[t] + np.log(1 + z),
+            phot[i] = [_trapezoid(np.sinh(np.interp(f_lw, tlw[t] + np.log(1 + z),
                                                   np.arcsinh(tfnu[t]))) *
                                 f_t / f_nu * te, f_nu) / f_n
                        for f_t, f_nu, f_lw, f_n, te in zip(filt_t, filt_nu,
@@ -982,7 +984,7 @@ class MockSurvey(object):
         flw = [np.log(f['wavelength']) for f in self.filters]  # ln(flt wave)
         filt_nu = [f['frequency'] for f in self.filters]  # filt nu
         filt_t = [f['transmission'] for f in self.filters]  # filt nu
-        norm = [np.trapz(ft / fn, fn)
+        norm = [_trapezoid(ft / fn, fn)
                 for ft, fn in zip(filt_t, filt_nu)]  # filter normalization
         tfnu = [t['fnu'] for t in self.templates]
 
@@ -998,7 +1000,7 @@ class MockSurvey(object):
 
                 # Integrate the flux over the filter. Interpolation is done
                 # using the arcsinh transform for improved numerical stability.
-                phot[i, j] = [np.trapz(f_t / f_nu * te *
+                phot[i, j] = [_trapezoid(f_t / f_nu * te *
                                        np.sinh(np.interp(f_lw, tlw[j] +
                                                          np.log(1 + z),
                                                          np.arcsinh(tfnu[j]))),
