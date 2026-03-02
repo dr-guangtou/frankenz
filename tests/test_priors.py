@@ -3,6 +3,8 @@
 import numpy as np
 import pytest
 
+_trapezoid = getattr(np, 'trapezoid', np.trapz)
+
 from frankenz.priors import pmag, bpz_pt_m, bpz_pz_tm, _bpz_prior
 
 
@@ -28,7 +30,7 @@ class TestPmag:
         """P(mag) integral should be approximately 1."""
         mags = np.linspace(10, 28, 10000)
         pm = pmag(mags, maglim=24.0)
-        integral = np.trapz(pm, mags)
+        integral = _trapezoid(pm, mags)
         assert integral == pytest.approx(1.0, abs=0.02)
 
 

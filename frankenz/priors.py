@@ -13,6 +13,8 @@ import math
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator as grid_interp
 
+_trapezoid = getattr(np, 'trapezoid', np.trapz)
+
 __all__ = ["pmag", "_bpz_prior", "bpz_pt_m", "bpz_pz_tm", "get_prior"]
 
 bpz_ptm = None
@@ -62,7 +64,7 @@ def pmag(mag, maglim, mbounds=(10., 28.), alpha=15., beta=2., gamma=1.,
     # Compute probabilities.
     mgrid = np.linspace(mbounds[0], mbounds[1], Npoints)  # mag grid
     pmgrid = mgrid**alpha * np.exp(-(mgrid / (maglim - gamma))**beta)  # P(mag)
-    pmgrid /= np.trapz(pmgrid, mgrid)  # normalize integral
+    pmgrid /= _trapezoid(pmgrid, mgrid)  # normalize integral
     pm = np.interp(mag, mgrid, pmgrid)  # extract P(mag)
 
     return pm
