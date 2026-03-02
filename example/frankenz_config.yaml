@@ -1,0 +1,42 @@
+# Frankenz v0.4.0 configuration for HSC S20 training sample
+# Translated from frankenz4DESI YACS format (example.yaml)
+# 5-band grizy cmodel photometry, KMCkNN backend
+
+model:
+  backend: knn
+  k_tree: 25
+  k_point: 20
+  free_scale: false
+  ignore_model_err: false
+  dim_prior: true
+  track_scale: false
+  kdtree:
+    leafsize: 20
+    eps: 0.001
+    lp_norm: 2
+    distance_upper_bound: .inf
+
+transform:
+  type: luptitude
+  zeropoints: 3630780547.7010174
+  skynoise:
+    - 0.01824022
+    - 0.02636513
+    - 0.03169786
+    - 0.06622622
+    - 0.12619147
+
+zgrid:
+  z_start: 0.0
+  z_end: 7.0
+  z_delta: 0.01
+
+pdf:
+  wt_thresh: 0.001
+  cdf_thresh: 0.0002
+
+prior:
+  type: uniform
+
+verbose: true
+seed: 42
