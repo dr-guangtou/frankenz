@@ -24,6 +24,12 @@ import numpy as np
 from astropy import units as u
 from scipy import stats
 
+# NumPy 2.x renamed np.trapz -> np.trapezoid; 1.x only has np.trapz.
+try:
+    _trapezoid = np.trapezoid
+except AttributeError:
+    _trapezoid = np.trapz
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -42,13 +48,6 @@ from frankenz.pdf import pdfs_summarize
 
 HDF5_MAGIC = b"\x89HDF\r\n\x1a\n"
 BAND_NAMES = ["g", "r", "i", "z", "y"]
-
-# Fixed KDE bandwidth for spectroscopic redshift errors.
-# The old frankenz4DESI pipeline uses ENABLE_ZERR=False with ZSMOOTH=0.01,
-# ignoring actual zerr values and using a fixed bandwidth.  We replicate
-# that here because the HSC HDF5 zerr column contains ~31% sentinel values
-# (-9, 0, 99) that would produce over-smoothed PDFs if used as bandwidth.
-ZSMOOTH = 0.01
 
 
 def load_hdf5_with_header(path):
@@ -70,7 +69,7 @@ def load_hdf5_with_header(path):
     return h5py.File(buf, "r")
 
 
-def load_hsc_data(path):
+def load_hsc_data(path, config=None):
     """Load HSC photometry from a frankenz4DESI-format HDF5 file.
 
     Applies flag filtering and aperture correction following the
@@ -80,8 +79,23 @@ def load_hsc_data(path):
 
     Error arrays are NOT aperture-corrected (following frankenz4DESI).
 
+    Parameters
+    ----------
+    path : str or Path
+        Path to the HDF5 file.
+    config : FrankenzConfig, optional
+        Configuration object.  Uses ``pdf.kde_bandwidth_fraction`` and
+        ``pdf.kde_bandwidth_floor`` to set KDE bandwidth per object as
+        ``max(fraction * z_spec, floor)``.  Defaults to 0.01 for both.
+
     Returns a PhotoData container.
     """
+    bw_frac = 0.01
+    bw_floor = 0.01
+    if config is not None:
+        bw_frac = config.pdf.kde_bandwidth_fraction
+        bw_floor = config.pdf.kde_bandwidth_floor
+
     f = load_hdf5_with_header(path)
 
     raw_flux = np.array(f["cmodel/flux"])
@@ -109,14 +123,12 @@ def load_hsc_data(path):
     redshifts = np.array(f["z"])[good] if "z" in f else None
     object_ids = np.array(f["object_id"])[good] if "object_id" in f else None
 
-    # Use fixed KDE bandwidth (ZSMOOTH) instead of raw zerr values.
-    # The HSC zerr column has ~31% sentinel values (-9, 0, 99) that would
-    # produce over-smoothed PDFs.  The old frankenz4DESI pipeline ignores
-    # zerr entirely (ENABLE_ZERR=false) and uses ZSMOOTH=0.01 as a fixed
-    # Gaussian KDE bandwidth for all training objects.
-    n_good = int(good.sum())
-    redshift_errs = np.full(n_good, ZSMOOTH)
-    print(f"  Using fixed KDE bandwidth (ZSMOOTH={ZSMOOTH})")
+    # KDE bandwidth = max(bw_frac * z_spec, bw_floor).
+    # The HSC zerr column has ~31% sentinel values (-9, 0, 99) and cannot
+    # be used directly.  A z-proportional bandwidth with a floor provides
+    # physically motivated kernel widths.
+    redshift_errs = np.maximum(bw_frac * redshifts, bw_floor)
+    print(f"  KDE bandwidth: max({bw_frac} * z, {bw_floor})")
 
     f.close()
 
@@ -180,7 +192,7 @@ def compute_crps(pdfs, zgrid, z_spec):
     crps = np.zeros(len(z_spec))
     for i in range(len(z_spec)):
         heaviside = (zgrid >= z_spec[i]).astype(float)
-        crps[i] = np.trapezoid((cdf_norm[i] - heaviside) ** 2, zgrid)
+        crps[i] = _trapezoid((cdf_norm[i] - heaviside) ** 2, zgrid)
     return crps
 
 
@@ -514,7 +526,7 @@ def fig_06_nz_comparison(z_spec, pdfs, zgrid, output_path):
 
     # Stacked PDFs
     nz_pdf = pdfs.sum(axis=0)
-    nz_pdf = nz_pdf / np.trapezoid(nz_pdf, zgrid)  # normalize to density
+    nz_pdf = nz_pdf / _trapezoid(nz_pdf, zgrid)  # normalize to density
     mask = zgrid <= z_max
     ax.plot(zgrid[mask], nz_pdf[mask], "r-", lw=2,
             label="Stacked $P(z)$ (predicted)")
@@ -879,12 +891,12 @@ def main():
 
     # --- Load data ---
     print(f"\nLoading training data from {args.train}")
-    train_data = load_hsc_data(args.train)
+    train_data = load_hsc_data(args.train, config=config)
     print(f"  Training: {train_data.n_objects} objects, "
           f"{train_data.n_bands} bands")
 
     print(f"\nLoading test data from {args.test}")
-    test_data = load_hsc_data(args.test)
+    test_data = load_hsc_data(args.test, config=config)
     print(f"  Test: {test_data.n_objects} objects, "
           f"{test_data.n_bands} bands")
 

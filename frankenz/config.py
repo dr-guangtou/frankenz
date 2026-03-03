@@ -69,6 +69,8 @@ class PDFConfig:
     """PDF construction parameters."""
     wt_thresh: float = 1e-3
     cdf_thresh: float = 2e-4
+    kde_bandwidth_fraction: float = 0.01
+    kde_bandwidth_floor: float = 0.01
 
 
 @dataclass
