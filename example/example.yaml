@@ -1,0 +1,48 @@
+DATA:
+  DATA: /home/sunzc18/HSC/code/frankenz4DESI/data/s20train-test.hdf5
+  MODEL: /home/sunzc18/HSC/code/frankenz4DESI/data/s20train-train.hdf5
+  NAME: cmodel
+  OUTPUT: /home/sunzc18/HSC/code/frankenz4DESI/output/experiments-random
+MODEL:
+  ENABLE_ZERR: false
+  KDTREE:
+    BALANCED_TREE: true
+    BOXSIZE: null
+    COMPACT_NODES: true
+    COPY_DATA: false
+    DISTANCE_UPPER_BOUND: .inf
+    EPS: 0.001
+    LEAFSIZE: 20
+    LPNORM: 2
+  KPOINT: 20
+  KTREE: 25
+  PDF:
+    CDF_THRESH: 0.0002
+    WT_THRESH: 0.001
+  PRIOR:
+    BALANCED_TREE: true
+    BOXSIZE: null
+    COMPACT_NODES: true
+    COPY_DATA: false
+    DISTANCE_UPPER_BOUND: .inf
+    EPS: 0.001
+    KPOINT: 20
+    KTREE: 25
+    LEAFSIZE: 20
+    LPNORM: 2
+    TYPE: uniform
+  ZGRID:
+    ZDELTA: 0.01
+    ZEND: 7.0
+    ZSTART: 0
+  ZSMOOTH: 0.01
+TRANSFORM:
+  SKYNOISE:
+  - 0.01824022
+  - 0.02636513
+  - 0.03169786
+  - 0.06622622
+  - 0.12619147
+  TYPE: luptitude
+  ZPT: 3630780547.7010174
+VERBOSE: true
