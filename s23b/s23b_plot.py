@@ -118,7 +118,7 @@ def plot_scale_dz(scale, logdz, ax=None, color="steelblue", cmap="viridis",
     ax.set_ylabel(r"$\log_{10}[\delta z / (1 + z)]$", fontsize=25)
 
     if label is not None:
-        ax.text(0.70, 0.9, label, fontsize=30, transform=ax.transAxes)
+        ax.text(0.10, 0.9, label, fontsize=30, transform=ax.transAxes)
 
     return ax
 
