@@ -1,0 +1,47 @@
+# Frankenz v0.4.0 configuration for HSC S23b undeblended photometry
+# 5-band grizy, KMCkNN backend
+#
+# Flux units: nJy (AB ZP = 31.4)
+# Luptitude zeropoint: 10^(-0.4 * (-31.4)) = 3.6307805477e12 nJy
+# Skynoise: placeholder values (overridden by data-driven estimation in script)
+
+model:
+  backend: knn
+  k_tree: 25
+  k_point: 20
+  free_scale: false
+  ignore_model_err: false
+  dim_prior: true
+  track_scale: false
+  kdtree:
+    leafsize: 20
+    eps: 0.001
+    lp_norm: 2
+    distance_upper_bound: .inf
+
+transform:
+  type: luptitude
+  zeropoints: 3630780547701.0174
+  skynoise:
+    - 1.0
+    - 1.0
+    - 1.0
+    - 1.0
+    - 1.0
+
+zgrid:
+  z_start: 0.0
+  z_end: 7.0
+  z_delta: 0.01
+
+pdf:
+  wt_thresh: 0.001
+  cdf_thresh: 0.0002
+  kde_bandwidth_fraction: 0.01
+  kde_bandwidth_floor: 0.01
+
+prior:
+  type: uniform
+
+verbose: true
+seed: 42

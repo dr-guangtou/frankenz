@@ -1,5 +1,6 @@
 example/*.hdf5
 example/output/
+s23b/output/
 *.py[cod]
 
 # C extensions
