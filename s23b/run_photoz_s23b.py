@@ -40,6 +40,8 @@ from frankenz.io import PhotoData, write_hdf5, read_hdf5
 from frankenz.batch import run_pipeline
 from frankenz.pdf import pdfs_summarize
 
+from s23b_plot import plot_qa_metrics
+
 
 # ============================================================================
 # A. Constants
@@ -67,6 +69,9 @@ ALLOWED_OBJECT_TYPES = {"G", "Q", "G/G", "G/Q", "Q/G", "Q/Q"}
 
 # Skynoise estimation
 FAINT_THRESHOLD = 25.0
+
+# Per-band S/N upper limit [g, r, i, z, y]
+SNR_CAP = [100.0, 100.0, 100.0, 80.0, 50.0]
 
 # Plotting
 FIGSIZE = (8, 6)
@@ -168,6 +173,18 @@ def estimate_skynoise(flux_err, i_mag, faint_threshold=FAINT_THRESHOLD):
     return skynoise
 
 
+def apply_snr_cap(flux, flux_err, snr_cap=SNR_CAP):
+    """Apply per-band S/N upper limit by inflating flux_err where needed.
+
+    For each band, if flux/flux_err > cap, replace flux_err with flux/cap.
+    """
+    flux_err_capped = flux_err.copy()
+    for i, cap in enumerate(snr_cap):
+        min_err = np.abs(flux[:, i]) / cap
+        flux_err_capped[:, i] = np.maximum(flux_err[:, i], min_err)
+    return flux_err_capped
+
+
 def build_photo_data(flux, flux_err, redshifts, kde_bw, object_ids):
     """Construct and validate a PhotoData container."""
     data = PhotoData(
@@ -186,6 +203,164 @@ def build_photo_data(flux, flux_err, redshifts, kde_bw, object_ids):
 # ============================================================================
 # C. Metrics Computation
 # ============================================================================
+
+# WIDE-depth i-band magnitude limit for QA figures
+MAG_MAX_WIDE = 25.5
+
+# Fixed-width QA binning (following s19a convention)
+QA_MAG_MIN, QA_MAG_MAX, QA_MAG_STEP = 18.5, MAG_MAX_WIDE, 0.5
+QA_Z_MIN, QA_Z_MAX, QA_Z_STEP = 0.0, 4.0, 0.2
+QA_DZ_LIMIT = 0.15
+
+
+def biweighted_bias(delta_z, c=6.0, scatter=False):
+    """Biweighted location (or scale) estimator.
+
+    Beers et al. 1990; Nishizawa et al. 2020.
+    ``c=6`` for location, ``c=9`` for scale.
+    """
+    M = np.nanmedian(delta_z)
+    for _ in range(50):
+        MAD = np.nanmedian(np.abs(delta_z - M))
+        if MAD == 0:
+            break
+        u = (delta_z - M) / (c * MAD)
+        mask = np.abs(u) < 1.0
+        num = ((1.0 - u ** 2) ** 2 * (delta_z - M))[mask].sum()
+        den = ((1.0 - u ** 2) ** 2)[mask].sum()
+        if den == 0:
+            break
+        M_new = M + num / den
+        if abs(M_new - M) < 1e-6:
+            M = M_new
+            break
+        M = M_new
+
+    if scatter:
+        MAD = np.nanmedian(np.abs(delta_z - M))
+        if MAD == 0:
+            return 0.0
+        u = (delta_z - M) / (c * MAD)
+        mask = np.abs(u) < 1.0
+        N = len(delta_z)
+        num = np.sqrt(
+            N * ((delta_z - M) ** 2 * (1.0 - u ** 2) ** 4)[mask].sum())
+        den = abs(((1.0 - u ** 2) * (1.0 - 5.0 * u ** 2))[mask].sum())
+        if den == 0:
+            return 0.0
+        return float(num / den)
+
+    return float(M)
+
+
+def qa_stats(z_spec, z_phot, delta_z_limit=QA_DZ_LIMIT):
+    """Compute all 7 QA metrics following s19a convention.
+
+    Returns dict with: bias_conv, bias_bw, sigma_conv, sigma_bw,
+    f_outlier_conv, f_outlier_bw, avg_loss, n_objects.
+    """
+    delta_z = (z_phot - z_spec) / (1.0 + z_spec)
+
+    # Conventional bias: sigma-clipped median
+    from astropy.stats import sigma_clipped_stats
+    _, bias_conv, _ = sigma_clipped_stats(
+        delta_z, sigma=3.0, maxiters=3,
+        cenfunc=np.nanmedian, stdfunc=np.nanstd, std_ddof=0)
+
+    # Biweighted bias
+    bias_bw = biweighted_bias(delta_z, c=6.0)
+
+    # Conventional scatter: 1.48 * MAD
+    from scipy.stats import median_abs_deviation
+    sigma_conv = 1.48 * median_abs_deviation(delta_z, nan_policy="omit")
+
+    # Biweighted scatter
+    sigma_bw = biweighted_bias(delta_z, c=9.0, scatter=True)
+
+    # Conventional outlier fraction
+    f_outlier_conv = float(np.mean(np.abs(delta_z) > delta_z_limit))
+
+    # Biweighted outlier fraction
+    f_outlier_bw = float(
+        np.mean(np.abs(delta_z - bias_bw) > 2.0 * sigma_bw))
+
+    # Average loss (Lorentzian)
+    avg_loss = float(
+        np.nanmean(1.0 - 1.0 / (1.0 + (delta_z / delta_z_limit) ** 2)))
+
+    return {
+        "bias_conv": float(bias_conv),
+        "bias_bw": float(bias_bw),
+        "sigma_conv": float(sigma_conv),
+        "sigma_bw": float(sigma_bw),
+        "f_outlier_conv": float(f_outlier_conv),
+        "f_outlier_bw": float(f_outlier_bw),
+        "avg_loss": float(avg_loss),
+        "n_objects": len(z_spec),
+    }
+
+
+def qa_mag_bins(z_spec, z_phot, i_mag,
+                mag_min=QA_MAG_MIN, mag_max=QA_MAG_MAX,
+                mag_step=QA_MAG_STEP):
+    """QA stats in fixed-width i-band magnitude bins (s19a convention).
+
+    Returns dict with arrays for each metric + per-bin delta_z lists.
+    """
+    bin_edges = np.arange(mag_min, mag_max + mag_step, mag_step)
+    n_bins = len(bin_edges) - 1
+    results = {k: np.full(n_bins, np.nan) for k in [
+        "bias_conv", "bias_bw", "sigma_conv", "sigma_bw",
+        "f_outlier_conv", "f_outlier_bw", "avg_loss"]}
+    results["bin_centers"] = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+    results["counts"] = np.zeros(n_bins, dtype=int)
+    results["delta_z_per_bin"] = []
+
+    for i in range(n_bins):
+        mask = (i_mag >= bin_edges[i]) & (i_mag < bin_edges[i + 1])
+        results["counts"][i] = mask.sum()
+        dz = (z_phot[mask] - z_spec[mask]) / (1.0 + z_spec[mask])
+        results["delta_z_per_bin"].append(dz)
+        if mask.sum() < 10:
+            continue
+        s = qa_stats(z_spec[mask], z_phot[mask])
+        for k in s:
+            if k in results:
+                results[k][i] = s[k]
+
+    return results
+
+
+def qa_z_bins(z_spec, z_phot,
+              z_min=QA_Z_MIN, z_max=QA_Z_MAX, z_step=QA_Z_STEP):
+    """QA stats in fixed-width spectroscopic redshift bins (s19a convention).
+
+    Bins by z_spec (the reference redshift), not z_phot.
+    Returns dict with arrays for each metric + per-bin delta_z lists.
+    """
+    bin_edges = np.arange(z_min, z_max + z_step, z_step)
+    n_bins = len(bin_edges) - 1
+    results = {k: np.full(n_bins, np.nan) for k in [
+        "bias_conv", "bias_bw", "sigma_conv", "sigma_bw",
+        "f_outlier_conv", "f_outlier_bw", "avg_loss"]}
+    results["bin_centers"] = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+    results["counts"] = np.zeros(n_bins, dtype=int)
+    results["delta_z_per_bin"] = []
+
+    for i in range(n_bins):
+        mask = (z_spec >= bin_edges[i]) & (z_spec < bin_edges[i + 1])
+        results["counts"][i] = mask.sum()
+        dz = (z_phot[mask] - z_spec[mask]) / (1.0 + z_spec[mask])
+        results["delta_z_per_bin"].append(dz)
+        if mask.sum() < 10:
+            continue
+        s = qa_stats(z_spec[mask], z_phot[mask])
+        for k in s:
+            if k in results:
+                results[k][i] = s[k]
+
+    return results
+
 
 def compute_point_metrics(z_spec, z_phot):
     """Standard photo-z point estimate metrics."""
@@ -267,7 +442,8 @@ def compute_binned_metrics(z_spec, z_phot, bin_values, n_bins=10):
     }
 
 
-def compute_all_metrics(z_spec, pdfs, zgrid, summary, i_mag=None):
+def compute_all_metrics(z_spec, pdfs, zgrid, summary, i_mag=None,
+                        specz_sources=None):
     """Compute all evaluation metrics."""
     mean_stats, median_stats, mode_stats, best_stats, intervals, mc = summary
 
@@ -302,10 +478,42 @@ def compute_all_metrics(z_spec, pdfs, zgrid, summary, i_mag=None):
     if i_mag is not None:
         binned["vs_imag"] = compute_binned_metrics(z_spec, z_best, i_mag)
 
+    # Full QA stats in fixed-width bins (s19a convention)
+    qa_all = {
+        "vs_zspec": qa_z_bins(z_spec, z_best),
+    }
+    if i_mag is not None:
+        mag_mask = i_mag <= MAG_MAX_WIDE
+        qa_all["vs_imag"] = qa_mag_bins(
+            z_spec[mag_mask], z_best[mag_mask], i_mag[mag_mask])
+
+    qa = {"All": qa_all}
+
+    # Per-source QA
+    if specz_sources is not None:
+        for source_key, source_name in [
+            ("DESI_DR1", "DESI"),
+            ("COSMOSWeb2025_v1", "COSMOSWeb"),
+        ]:
+            src_mask = specz_sources == source_key
+            if src_mask.sum() < 50:
+                continue
+            src_qa = {
+                "vs_zspec": qa_z_bins(z_spec[src_mask], z_best[src_mask]),
+            }
+            if i_mag is not None:
+                src_mag_mask = src_mask & (i_mag <= MAG_MAX_WIDE)
+                if src_mag_mask.sum() >= 50:
+                    src_qa["vs_imag"] = qa_mag_bins(
+                        z_spec[src_mag_mask], z_best[src_mag_mask],
+                        i_mag[src_mag_mask])
+            qa[source_name] = src_qa
+
     return {
         "point": point_metrics,
         "pdf": pdf_metrics,
         "binned": binned,
+        "qa": qa,
         "estimators": estimators,
         "summary": summary,
     }
@@ -323,6 +531,29 @@ def compute_source_metrics(z_spec, z_phot, specz_sources):
             continue
         results[source_name] = compute_point_metrics(z_spec[mask], z_phot[mask])
     return results
+
+
+def compute_source_binned_metrics(z_spec, z_phot, specz_sources,
+                                  bin_values, n_bins=10):
+    """Compute binned metrics for All + per-source, sharing bin edges from All.
+
+    Returns dict mapping source label -> binned metrics dict.
+    """
+    all_binned = compute_binned_metrics(z_spec, z_phot, bin_values,
+                                        n_bins=n_bins)
+    result = {"All": all_binned}
+
+    for source_key, source_name in [
+        ("DESI_DR1", "DESI"),
+        ("COSMOSWeb2025_v1", "COSMOSWeb"),
+    ]:
+        mask = specz_sources == source_key
+        if mask.sum() < 50:
+            continue
+        result[source_name] = compute_binned_metrics(
+            z_spec[mask], z_phot[mask], bin_values[mask], n_bins=n_bins)
+
+    return result
 
 
 # ============================================================================
@@ -754,7 +985,7 @@ def fig_12_metrics_by_source(z_spec, z_best, specz_sources, source_metrics,
 
 def generate_all_figures(z_spec, metrics, pdfs, zgrid, i_mag,
                          specz_sources, source_metrics, fig_dir):
-    """Generate all 12 QA figures."""
+    """Generate all 11 QA figures."""
     fig_dir = Path(fig_dir)
     fig_dir.mkdir(parents=True, exist_ok=True)
 
@@ -763,59 +994,64 @@ def generate_all_figures(z_spec, metrics, pdfs, zgrid, i_mag,
     z_best = best_stats[0]
     m_best = metrics["point"]["best"]
 
+    n_fig = 11
     print("\nGenerating figures...")
 
-    print("  [01/12] Scatter 4-panel")
+    print(f"  [01/{n_fig}] Scatter 4-panel")
     fig_01_scatter_4panel(
         z_spec, metrics["estimators"], metrics,
         fig_dir / "fig_01_scatter_4panel.png")
 
-    print("  [02/12] Residual histogram")
+    print(f"  [02/{n_fig}] Residual histogram")
     fig_02_residual_histogram(z_spec, z_best, m_best,
                               fig_dir / "fig_02_residual_histogram.png")
 
-    print("  [03/12] Residual vs z_spec")
+    print(f"  [03/{n_fig}] Residual vs z_spec")
     fig_03_residual_vs_zspec(z_spec, z_best,
                              fig_dir / "fig_03_residual_vs_zspec.png")
 
-    print("  [04/12] Residual vs i-mag")
+    print(f"  [04/{n_fig}] Residual vs i-mag")
     fig_04_residual_vs_mag(z_spec, z_best, i_mag,
                            fig_dir / "fig_04_residual_vs_mag.png")
 
-    print("  [05/12] PIT + QQ")
+    print(f"  [05/{n_fig}] PIT + QQ")
     fig_05_pit_qq(
         metrics["pdf"]["pit"],
         metrics["pdf"]["ks_stat"], metrics["pdf"]["ks_pvalue"],
         fig_dir / "fig_05_pit_qq.png")
 
-    print("  [06/12] N(z) comparison")
+    print(f"  [06/{n_fig}] N(z) comparison")
     fig_06_nz_comparison(z_spec, pdfs, zgrid,
                          fig_dir / "fig_06_nz_comparison.png")
 
-    print("  [07/12] Example PDFs")
+    print(f"  [07/{n_fig}] Example PDFs")
     fig_07_example_pdfs(z_spec, z_best, pdfs, zgrid,
                         fig_dir / "fig_07_example_pdfs.png")
 
-    print("  [08/12] Metrics vs z_spec")
-    fig_08_metrics_vs_zbin(metrics["binned"]["vs_zspec"],
-                           fig_dir / "fig_08_metrics_vs_zbin.png")
+    print(f"  [08/{n_fig}] QA metrics panels")
+    qa = metrics["qa"]
+    for src_label, src_qa in qa.items():
+        if "vs_imag" not in src_qa or "vs_zspec" not in src_qa:
+            continue
+        suffix = src_label.lower().replace(" ", "_")
+        fname = f"fig_08_qa_metrics_{suffix}.png"
+        plot_qa_metrics(src_qa["vs_imag"], src_qa["vs_zspec"],
+                        output_path=fig_dir / fname,
+                        title=src_label if src_label != "All" else None,
+                        dpi=DPI)
+        print(f"           {fname}")
 
-    if "vs_imag" in metrics["binned"]:
-        print("  [09/12] Metrics vs i-mag")
-        fig_09_metrics_vs_magbin(metrics["binned"]["vs_imag"],
-                                 fig_dir / "fig_09_metrics_vs_magbin.png")
-
-    print("  [10/12] Credible coverage")
+    print(f"  [09/{n_fig}] Credible coverage")
     fig_10_credible_coverage(z_spec, pdfs, zgrid,
-                             fig_dir / "fig_10_credible_coverage.png")
+                             fig_dir / "fig_09_credible_coverage.png")
 
-    print("  [11/12] N(z) by source")
+    print(f"  [10/{n_fig}] N(z) by source")
     fig_11_nz_by_source(z_spec, pdfs, zgrid, specz_sources,
-                        fig_dir / "fig_11_nz_by_source.png")
+                        fig_dir / "fig_10_nz_by_source.png")
 
-    print("  [12/12] Metrics by source")
+    print(f"  [11/{n_fig}] Metrics by source")
     fig_12_metrics_by_source(z_spec, z_best, specz_sources, source_metrics,
-                             fig_dir / "fig_12_metrics_by_source.png")
+                             fig_dir / "fig_11_metrics_by_source.png")
 
     print(f"  All figures saved to {fig_dir}/")
 
@@ -1170,9 +1406,17 @@ def prepare_all_folds(catalog_data, config, output_dir, force=False):
     flux_corrected = apply_extinction_correction(flux_clean, ext_clean)
     print(f"  Median A_i = {np.median(ext_clean[:, 2]):.4f} mag")
 
+    # Apply S/N cap (error floor for bright objects)
+    flux_err_capped = apply_snr_cap(flux_corrected, flux_err_clean)
+    n_capped = (flux_err_capped > flux_err_clean).any(axis=1).sum()
+    print(f"\nS/N cap applied: {n_capped:,} objects have at least one band capped")
+    for i, b in enumerate(BANDS):
+        n_b = (flux_err_capped[:, i] > flux_err_clean[:, i]).sum()
+        print(f"  {b}: {n_b:,} objects capped (S/N cap = {SNR_CAP[i]})")
+
     # Estimate skynoise from faint objects
     i_mag_clean = flux_to_ab_mag(flux_corrected[:, 2])
-    skynoise = estimate_skynoise(flux_err_clean, i_mag_clean)
+    skynoise = estimate_skynoise(flux_err_capped, i_mag_clean)
     n_faint = (i_mag_clean > FAINT_THRESHOLD).sum()
     print(f"\nSkynoise estimation (from {n_faint:,} faint objects, "
           f"i > {FAINT_THRESHOLD}):")
@@ -1198,11 +1442,11 @@ def prepare_all_folds(catalog_data, config, output_dir, force=False):
         train_mask = ~test_mask
 
         train_data = build_photo_data(
-            flux_corrected[train_mask], flux_err_clean[train_mask],
+            flux_corrected[train_mask], flux_err_capped[train_mask],
             z_clean[train_mask], kde_bw[train_mask], oid_clean[train_mask],
         )
         test_data = build_photo_data(
-            flux_corrected[test_mask], flux_err_clean[test_mask],
+            flux_corrected[test_mask], flux_err_capped[test_mask],
             z_clean[test_mask], kde_bw[test_mask], oid_clean[test_mask],
         )
 
@@ -1496,7 +1740,8 @@ def main():
     # --- Compute metrics ---
     print("Computing evaluation metrics...")
     metrics = compute_all_metrics(
-        z_spec, pdfs, zgrid, summary_masked, i_mag=i_mag
+        z_spec, pdfs, zgrid, summary_masked, i_mag=i_mag,
+        specz_sources=specz_sources,
     )
 
     # Per-source metrics
