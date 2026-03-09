@@ -66,6 +66,13 @@ def run_pipeline(config, training_data, test_data, chunk_size=1000):
     if config.seed is not None:
         rstate = np.random.RandomState(config.seed)
 
+    # Prepare lprob_kwargs from model config
+    lprob_kwargs = {
+        "free_scale": config.model.free_scale,
+        "ignore_model_err": config.model.ignore_model_err,
+        "dim_prior": config.model.dim_prior,
+    }
+
     # Prepare fit_predict kwargs — common to all backends
     fit_kwargs = {
         "model_labels": training_data.redshifts,
@@ -74,6 +81,7 @@ def run_pipeline(config, training_data, test_data, chunk_size=1000):
                              else np.zeros(training_data.n_objects)),
         "label_grid": zgrid,
         "lprob_func": lprob_func,
+        "lprob_kwargs": lprob_kwargs,
         "return_gof": False,
         "track_scale": config.model.track_scale,
         "verbose": False,

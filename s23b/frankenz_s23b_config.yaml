@@ -37,8 +37,8 @@ zgrid:
 pdf:
   wt_thresh: 0.001
   cdf_thresh: 0.0002
-  kde_bandwidth_fraction: 0.01
-  kde_bandwidth_floor: 0.01
+  kde_bandwidth_fraction: 0.10
+  kde_bandwidth_floor: 0.05
 
 prior:
   type: uniform

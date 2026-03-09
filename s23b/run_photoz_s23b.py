@@ -376,24 +376,31 @@ def compute_point_metrics(z_spec, z_phot):
 
 
 def compute_pit(pdfs, zgrid, z_spec):
-    """Probability Integral Transform values."""
+    """Probability Integral Transform values (vectorized)."""
     cdfs = np.cumsum(pdfs, axis=1)
     cdf_norm = cdfs / cdfs[:, -1:]
-    pit = np.array([
-        np.interp(z_spec[i], zgrid, cdf_norm[i])
-        for i in range(len(z_spec))
-    ])
+    # Find grid indices for each z_spec
+    idx = np.searchsorted(zgrid, z_spec, side="right") - 1
+    idx = np.clip(idx, 0, len(zgrid) - 2)
+    # Linear interpolation
+    frac = (z_spec - zgrid[idx]) / (zgrid[idx + 1] - zgrid[idx])
+    frac = np.clip(frac, 0.0, 1.0)
+    pit = cdf_norm[np.arange(len(z_spec)), idx] * (1 - frac) + \
+          cdf_norm[np.arange(len(z_spec)), idx + 1] * frac
     return pit
 
 
 def compute_crps(pdfs, zgrid, z_spec):
-    """Continuous Ranked Probability Score per object."""
+    """Continuous Ranked Probability Score per object (vectorized)."""
     cdfs = np.cumsum(pdfs, axis=1)
     cdf_norm = cdfs / cdfs[:, -1:]
-    crps = np.zeros(len(z_spec))
-    for i in range(len(z_spec)):
-        heaviside = (zgrid >= z_spec[i]).astype(float)
-        crps[i] = _trapezoid((cdf_norm[i] - heaviside) ** 2, zgrid)
+    # Heaviside: (N, Ngrid) — broadcast z_spec[:, None] vs zgrid[None, :]
+    heaviside = (zgrid[None, :] >= z_spec[:, None]).astype(float)
+    dz = np.diff(zgrid)
+    integrand = (cdf_norm - heaviside) ** 2
+    # Trapezoidal rule vectorized across all objects
+    crps = np.sum(0.5 * (integrand[:, :-1] + integrand[:, 1:]) * dz[None, :],
+                  axis=1)
     return crps
 
 
@@ -562,7 +569,10 @@ def compute_source_binned_metrics(z_spec, z_phot, specz_sources,
 
 def fig_01_scatter_4panel(z_spec, estimators, metrics, output_path):
     """z_spec vs z_phot for mean/median/mode/best, density hexbin."""
-    fig, axes = plt.subplots(2, 2, figsize=(12, 11))
+    plt.rcParams["text.usetex"] = True
+    plt.rcParams["font.family"] = "serif"
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 14))
     names = ["mean", "median", "mode", "best"]
 
     for ax, name in zip(axes.flat, names):
@@ -579,23 +589,26 @@ def fig_01_scatter_4panel(z_spec, estimators, metrics, output_path):
 
         ax.set_xlim(0, z_max)
         ax.set_ylim(0, z_max)
-        ax.set_xlabel("$z_{\\rm spec}$")
-        ax.set_ylabel("$z_{\\rm phot}$")
-        ax.set_title(f"{name}", fontsize=12)
+        ax.set_aspect("equal")
+        ax.set_xlabel(r"$z_{\rm spec}$", fontsize=20)
+        ax.set_ylabel(r"$z_{\rm phot}$", fontsize=20)
+        ax.set_title(f"{name}", fontsize=22)
+        ax.tick_params(labelsize=16)
 
         text = (f"bias = {m['bias']:.4f}\n"
                 f"$\\sigma_{{\\rm NMAD}}$ = {m['sigma_nmad']:.4f}\n"
                 f"$f_{{\\rm out}}$ = {m['outlier_frac']:.3f}\n"
                 f"N = {m['n_objects']}")
         ax.text(0.03, 0.97, text, transform=ax.transAxes,
-                va="top", ha="left", fontsize=9,
+                va="top", ha="left", fontsize=18,
                 bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8))
 
-    fig.suptitle("Photo-z Scatter: $z_{\\rm spec}$ vs $z_{\\rm phot}$",
-                 fontsize=14, y=0.98)
+    fig.suptitle(r"Photo-z Scatter: $z_{\rm spec}$ vs $z_{\rm phot}$",
+                 fontsize=24, y=0.98)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
     fig.savefig(output_path, dpi=DPI, bbox_inches="tight")
     plt.close(fig)
+    plt.rcParams["text.usetex"] = False
 
 
 def fig_02_residual_histogram(z_spec, z_best, metrics_best, output_path):
@@ -637,10 +650,14 @@ def fig_03_residual_vs_zspec(z_spec, z_best, output_path):
     dz = (z_best - z_spec) / (1.0 + z_spec)
 
     fig, ax = plt.subplots(figsize=FIGSIZE)
-    ax.hexbin(z_spec, dz, gridsize=80, cmap="viridis", mincnt=1,
-              norm=LogNorm(), extent=[0, z_spec.max() * 1.05, -0.5, 0.5])
+    z_range_max = 4.0
+    mask = z_spec <= z_range_max
+    z_plot, dz_plot = z_spec[mask], dz[mask]
 
-    z_bins = np.linspace(z_spec.min(), z_spec.max(), 21)
+    ax.hexbin(z_plot, dz_plot, gridsize=80, cmap="viridis", mincnt=1,
+              norm=LogNorm(), extent=[0, z_range_max, -0.5, 0.5])
+
+    z_bins = np.linspace(0.0, z_range_max, 21)
     z_centers = 0.5 * (z_bins[:-1] + z_bins[1:])
     running_median = np.zeros(len(z_centers))
     running_lo = np.zeros(len(z_centers))
@@ -661,6 +678,7 @@ def fig_03_residual_vs_zspec(z_spec, z_best, output_path):
     ax.axhline(0.15, color="gray", ls=":", lw=0.6, alpha=0.5)
     ax.axhline(-0.15, color="gray", ls=":", lw=0.6, alpha=0.5)
 
+    ax.set_xlim(0, z_range_max)
     ax.set_xlabel("$z_{\\rm spec}$")
     ax.set_ylabel("$\\Delta z / (1 + z_{\\rm spec})$")
     ax.set_title("Residuals vs Spectroscopic Redshift")
@@ -675,13 +693,15 @@ def fig_04_residual_vs_mag(z_spec, z_best, i_mag, output_path):
     """dz/(1+z) vs i-band magnitude with running median and 68% band."""
     dz = (z_best - z_spec) / (1.0 + z_spec)
 
+    mag_max = 26.0
     fig, ax = plt.subplots(figsize=FIGSIZE)
-    valid = np.isfinite(i_mag) & np.isfinite(dz)
-    ax.hexbin(i_mag[valid], dz[valid], gridsize=80, cmap="viridis",
-              mincnt=1, norm=LogNorm())
+    valid = np.isfinite(i_mag) & np.isfinite(dz) & (i_mag <= mag_max)
+    mag_min = np.nanpercentile(i_mag[valid], 1)
+    ax.hexbin(i_mag[valid], dz[valid], gridsize=(80, 240), cmap="viridis",
+              mincnt=1, norm=LogNorm(),
+              extent=[mag_min, mag_max, -0.5, 0.5])
 
-    mag_bins = np.linspace(np.nanpercentile(i_mag, 1),
-                           np.nanpercentile(i_mag, 99), 21)
+    mag_bins = np.linspace(mag_min, mag_max, 21)
     mag_centers = 0.5 * (mag_bins[:-1] + mag_bins[1:])
     running_median = np.zeros(len(mag_centers))
     running_lo = np.zeros(len(mag_centers))
@@ -700,6 +720,7 @@ def fig_04_residual_vs_mag(z_spec, z_best, i_mag, output_path):
                     color="red", alpha=0.2, label="68% band")
     ax.axhline(0, color="gray", ls="--", lw=0.8)
 
+    ax.set_xlim(mag_min, mag_max)
     ax.set_xlabel("$i$-band magnitude (AB)")
     ax.set_ylabel("$\\Delta z / (1 + z_{\\rm spec})$")
     ax.set_title("Residuals vs $i$-band Magnitude")
@@ -1464,6 +1485,10 @@ def prepare_all_folds(catalog_data, config, output_dir, force=False):
         i_mag=i_mag_clean,
         sample_crossval=cv_clean,
         skynoise=skynoise,
+        flux_corrected=flux_corrected,
+        flux_err_clean=flux_err_clean,
+        redshift=z_clean,
+        object_id=oid_clean,
     )
     print(f"  Auxiliary data saved to {aux_path}")
 
@@ -1522,6 +1547,235 @@ def run_single_fold(fold, config, output_dir, chunk_size):
     summary = pdfs_summarize(pdfs, zgrid, renormalize=True)
 
     save_fold_results(pdfs, zgrid, summary, fold, results_dir)
+
+
+def run_single_fold_with_intermediates(fold, config, output_dir, chunk_size):
+    """Run frankenz pipeline for a single fold, saving neighbor intermediates.
+
+    Saves neighbor indices and log-posteriors per chunk so that KDE bandwidth
+    can be re-swept without re-running the expensive KNN fitting step.
+    """
+    from frankenz.fitting import get_fitter
+    from frankenz.transforms import get_transform
+    from frankenz.pdf import logprob, gauss_kde, pdfs_summarize
+
+    prepared_dir = Path(output_dir) / "prepared"
+    results_dir = Path(output_dir) / "results"
+    intermediates_dir = Path(output_dir) / "intermediates"
+    results_dir.mkdir(parents=True, exist_ok=True)
+    intermediates_dir.mkdir(parents=True, exist_ok=True)
+
+    inter_path = intermediates_dir / f"fold_{fold}_intermediates.npz"
+    result_path = results_dir / f"fold_{fold}_results.npz"
+
+    if inter_path.exists() and result_path.exists():
+        print(f"\n  Fold {fold} intermediates+results already exist, skipping.")
+        return
+
+    print(f"\n--- Fold {fold} (with intermediates) ---")
+    train_data = read_hdf5(prepared_dir / f"fold_{fold}_train.hdf5")
+    test_data = read_hdf5(prepared_dir / f"fold_{fold}_test.hdf5")
+    print(f"  Train: {train_data.n_objects:,}, Test: {test_data.n_objects:,}")
+
+    # Build fitter
+    fitter = get_fitter(config, train_data)
+
+    # Prepare lprob_kwargs from config
+    lprob_kwargs = {
+        "free_scale": config.model.free_scale,
+        "ignore_model_err": config.model.ignore_model_err,
+        "dim_prior": config.model.dim_prior,
+    }
+
+    rstate = None
+    if config.seed is not None:
+        rstate = np.random.RandomState(config.seed)
+
+    n_test = test_data.n_objects
+    n_chunks = max(1, (n_test + chunk_size - 1) // chunk_size)
+
+    zgrid = np.arange(
+        config.zgrid.z_start,
+        config.zgrid.z_end + config.zgrid.z_delta * 0.5,
+        config.zgrid.z_delta,
+    )
+
+    t0 = time.time()
+
+    # Process in chunks to manage memory
+    all_pdfs = []
+    all_neighbors = []
+    all_nneighbors = []
+    all_fit_lnprob = []
+
+    for chunk_idx in range(n_chunks):
+        start = chunk_idx * chunk_size
+        end = min(start + chunk_size, n_test)
+        chunk = test_data.subset(range(start, end))
+
+        # Step 1: fit (find neighbors + compute posteriors)
+        fitter.fit(
+            data=chunk.flux, data_err=chunk.flux_err, data_mask=chunk.mask,
+            lprob_func=logprob, lprob_kwargs=lprob_kwargs,
+            rstate=rstate, k=config.model.k_point,
+            eps=config.model.kdtree.eps,
+            lp_norm=config.model.kdtree.lp_norm,
+            distance_upper_bound=config.model.kdtree.distance_upper_bound,
+            track_scale=config.model.track_scale,
+            verbose=False,
+        )
+
+        # Save intermediates from this chunk
+        all_neighbors.append(fitter.neighbors.copy())
+        all_nneighbors.append(fitter.Nneighbors.copy())
+        all_fit_lnprob.append(fitter.fit_lnprob.copy())
+
+        # Step 2: predict (KDE to build PDFs)
+        pdfs = fitter.predict(
+            model_labels=train_data.redshifts,
+            model_label_errs=train_data.redshift_errs,
+            label_grid=zgrid,
+            return_gof=False,
+            verbose=False,
+        )
+        all_pdfs.append(pdfs)
+
+        if config.verbose:
+            print(f"  Chunk {chunk_idx+1}/{n_chunks}: "
+                  f"{end-start} objects processed")
+
+    elapsed = time.time() - t0
+    print(f"  Pipeline complete in {elapsed:.1f}s "
+          f"({n_test/elapsed:.0f} obj/s)")
+
+    # Concatenate
+    pdfs = np.vstack(all_pdfs)
+    neighbors = np.vstack(all_neighbors)
+    nneighbors = np.concatenate(all_nneighbors)
+    fit_lnprob = np.vstack(all_fit_lnprob)
+
+    # Save intermediates
+    np.savez(
+        inter_path,
+        neighbors=neighbors,
+        nneighbors=nneighbors,
+        fit_lnprob=fit_lnprob,
+    )
+    print(f"  Intermediates saved to {inter_path} "
+          f"({inter_path.stat().st_size / 1e6:.1f} MB)")
+
+    # Compute summary and save results
+    print("  Computing PDF summary statistics...")
+    summary = pdfs_summarize(pdfs, zgrid, renormalize=True)
+    save_fold_results(pdfs, zgrid, summary, fold, results_dir)
+
+
+def resweep_bandwidth(fold, bw_frac, bw_floor, output_dir, zgrid):
+    """Re-build PDFs from saved intermediates with new KDE bandwidth.
+
+    Loads neighbor indices + log-posteriors, recomputes KDE bandwidth for
+    the training redshifts, and reconstructs PDFs via vectorized Gaussian
+    KDE without calling gauss_kde per object.
+
+    Returns (pdfs, summary) tuple.
+    """
+    from frankenz.pdf import pdfs_summarize
+    from scipy.special import logsumexp as _logsumexp
+
+    prepared_dir = Path(output_dir) / "prepared"
+    intermediates_dir = Path(output_dir) / "intermediates"
+
+    # Load intermediates
+    inter = np.load(intermediates_dir / f"fold_{fold}_intermediates.npz")
+    neighbors = inter["neighbors"]
+    nneighbors = inter["nneighbors"]
+    fit_lnprob = inter["fit_lnprob"]
+    n_test = len(nneighbors)
+
+    # Load training data to get spec-z
+    train_data = read_hdf5(prepared_dir / f"fold_{fold}_train.hdf5")
+    z_train = train_data.redshifts
+
+    # Recompute KDE bandwidth with new parameters
+    kde_bw_train = np.maximum(bw_frac * z_train, bw_floor)
+
+    # Vectorized PDF reconstruction in batches
+    n_z = len(zgrid)
+    pdfs = np.zeros((n_test, n_z))
+    batch_size = 1000
+    max_neighbors = neighbors.shape[1]
+
+    for batch_start in range(0, n_test, batch_size):
+        batch_end = min(batch_start + batch_size, n_test)
+        b_size = batch_end - batch_start
+
+        b_nneighbors = nneighbors[batch_start:batch_end]
+        b_neighbors = neighbors[batch_start:batch_end]
+        b_lnprob = fit_lnprob[batch_start:batch_end]
+
+        # Compute weights: normalize log-posteriors per object
+        # Mask invalid entries
+        max_nn = b_nneighbors.max()
+        mask = np.arange(max_nn)[None, :] < b_nneighbors[:, None]
+
+        b_lnprob_trimmed = b_lnprob[:, :max_nn].copy()
+        b_lnprob_trimmed[~mask] = -np.inf
+
+        levid = _logsumexp(b_lnprob_trimmed, axis=1)
+        wt = np.exp(b_lnprob_trimmed - levid[:, None])
+        wt[~mask] = 0.0
+
+        b_idxs = b_neighbors[:, :max_nn]
+
+        # For each object, compute weighted Gaussian KDE
+        # Use batch-vectorized approach: gather z_train and kde_bw for neighbors
+        # Shape: (b_size, max_nn)
+        z_neighbors = np.take(z_train, np.clip(b_idxs, 0, len(z_train) - 1))
+        bw_neighbors = np.take(kde_bw_train, np.clip(b_idxs, 0, len(z_train) - 1))
+        z_neighbors[~mask] = 0.0
+        bw_neighbors[~mask] = 1.0  # avoid div-by-zero
+
+        # Compute Gaussian: (b_size, max_nn, n_z)
+        # zgrid[None, None, :] - z_neighbors[:, :, None]
+        # This array is (b_size * max_nn * n_z) floats
+        # For b_size=1000, max_nn~300, n_z=701: 210M floats = 1.6 GB — too big
+        # Instead, loop over objects but use vectorized Gaussian per object
+        for i in range(b_size):
+            nn = b_nneighbors[i]
+            if nn == 0:
+                continue
+            z_n = z_neighbors[i, :nn]
+            bw_n = bw_neighbors[i, :nn]
+            w_n = wt[i, :nn]
+
+            # Apply weight threshold (like gauss_kde wt_thresh=1e-3)
+            wt_max = w_n.max()
+            if wt_max <= 0:
+                continue
+            sel = w_n > 1e-3 * wt_max
+            if not sel.any():
+                continue
+
+            z_sel = z_n[sel]
+            bw_sel = bw_n[sel]
+            w_sel = w_n[sel]
+
+            # Vectorized Gaussian KDE: (n_selected, n_z)
+            diff = zgrid[None, :] - z_sel[:, None]  # (n_sel, n_z)
+            gauss = np.exp(-0.5 * (diff / bw_sel[:, None]) ** 2)
+            # Normalize each Gaussian
+            gauss_sums = gauss.sum(axis=1, keepdims=True)
+            gauss_sums[gauss_sums == 0] = 1.0
+            gauss /= gauss_sums
+            # Weighted sum
+            pdf = (w_sel[:, None] * gauss).sum(axis=0)
+            pdf_sum = pdf.sum()
+            if pdf_sum > 0:
+                pdf /= pdf_sum
+            pdfs[batch_start + i] = pdf
+
+    summary = pdfs_summarize(pdfs, zgrid, renormalize=True)
+    return pdfs, summary
 
 
 def aggregate_fold_results(folds, output_dir):
@@ -1622,6 +1876,9 @@ def parse_args():
     parser.add_argument(
         "--skip-run", action="store_true",
         help="Skip pipeline, load existing results")
+    parser.add_argument(
+        "--save-intermediates", action="store_true",
+        help="Save neighbor intermediates for bandwidth re-sweep")
     return parser.parse_args()
 
 
@@ -1681,7 +1938,11 @@ def main():
         print("=" * 60)
         t0_total = time.time()
         for fold in folds:
-            run_single_fold(fold, config, output_dir, args.chunk_size)
+            if args.save_intermediates:
+                run_single_fold_with_intermediates(
+                    fold, config, output_dir, args.chunk_size)
+            else:
+                run_single_fold(fold, config, output_dir, args.chunk_size)
         elapsed_total = time.time() - t0_total
         print(f"\nAll folds complete in {elapsed_total:.1f}s")
     else:
