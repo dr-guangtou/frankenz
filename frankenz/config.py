@@ -8,6 +8,7 @@ loaded from / saved to YAML files.
 import copy
 from dataclasses import dataclass, field, fields, asdict
 from pathlib import Path
+from typing import Sequence, Union
 
 import yaml
 
@@ -22,7 +23,30 @@ class TransformConfig:
     """Transform configuration for photometric feature mapping."""
     type: str = "luptitude"
     zeropoints: float = 1.0
-    skynoise: list = field(default_factory=lambda: [1.0])
+    skynoise: Union[list, dict] = field(default_factory=lambda: [1.0])
+
+    def resolved_skynoise(self, bands: Sequence[str]) -> list:
+        """Return `skynoise` as a list aligned to `bands`.
+
+        Accepts either a list (length must equal `len(bands)`) or a
+        dict keyed by band name. Dicts are resolved in `bands` order;
+        missing bands raise KeyError.
+        """
+        sn = self.skynoise
+        if isinstance(sn, dict):
+            missing = [b for b in bands if b not in sn]
+            if missing:
+                raise KeyError(
+                    f"skynoise dict missing bands: {missing}"
+                )
+            return [float(sn[b]) for b in bands]
+        sn_list = [float(v) for v in sn]
+        if len(sn_list) != len(bands):
+            raise ValueError(
+                f"skynoise list length {len(sn_list)} != "
+                f"{len(bands)} bands"
+            )
+        return sn_list
 
 
 @dataclass
